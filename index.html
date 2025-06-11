@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CONVERT TROJAN, VMESS, VLESS SERBA DIGITALKU</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #ffffff;
+    margin: 0; padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .container {
+    width: 100%;
+    max-width: 900px;
+    background: #fff;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    font-weight: 700;
+    color: #222;
+  }
+  label {
+    font-weight: bold;
+    color: #333;
+  }
+  textarea, input {
+    width: 100%;
+    padding: 12px 14px;
+    margin-top: 6px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 14px;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color 0.3s ease;
+  }
+  textarea:focus, input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 8px #a1cdfd;
+  }
+  pre {
+    background: #1e1e1e;
+    color: #eee;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-x: auto;
+  }
+  button {
+    padding: 12px 18px;
+    border: none;
+    border-radius: 6px;
+    background: #062236;
+    color: white;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+  button:hover {
+    background: #0a3757;
+  }
+  .btn-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 600px) {
+    body {
+      padding: 10px;
+      align-items: stretch;
+    }
+    .container {
+      padding: 20px;
+    }
+    button {
+      width: 100%;
+    }
+    .btn-group {
+      flex-direction: column;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h2>CONVERT AKUN VPN KE PROXIES DAN YAML</h2>
+
+    <label for="inputConfig">Masukkan link konfigurasi AKUN VPN (vmess://, trojan://, vless://), satu baris per link:</label>
+    <textarea id="inputConfig" rows="6" placeholder="Contoh: vmess://, trojan://, vless://"></textarea>
+
+    <div class="btn-group">
+      <button onclick="convertConfig()">Convert</button>
+    </div>
+
+    <label for="outputYaml">Output bagian <code>proxies:</code></label>
+    <pre id="outputYaml">Hasil akan muncul di sini...</pre>
+
+    <div class="btn-group">
+        <button onclick="copyYaml()">Copy Proxies</button>
+    </div>
+    <label for="filenameInput">Nama file YAML untuk download:</label>
+    <input id="filenameInput" value="openclash.yaml" placeholder="Masukkan nama file.yaml" />
+
+    <button onclick="downloadYaml()">Download YAML</button>
+  </div>
+
+<script>
+  let finalYaml = '';
+
+  function convertConfig() {
+    const input = document.getElementById('inputConfig').value.trim();
+    if (!input) {
+      alert("Masukkan konfigurasi terlebih dahulu.");
+      return;
+    }
+
+    const lines = input.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const proxies = [];
+
+    lines.forEach(line => {
+      if (line.startsWith('vmess://')) {
+        const p = parseVmess(line);
+        if (p) proxies.push(p);
+      } else if (line.startsWith('trojan://')) {
+        const p = parseTrojan(line);
+        if (p) proxies.push(p);
+      } else if (line.startsWith('vless://')) {
+        const p = parseVless(line);
+        if (p) proxies.push(p);
+      }
+    });
+
+    if (proxies.length === 0) {
+      document.getElementById('outputYaml').textContent = 'Tidak ada konfigurasi valid yang ditemukan.';
+      return;
+    }
+
+    finalYaml = 'proxies:\n';
+    proxies.forEach(p => {
+      finalYaml += `- name: ${p.name}\n`;
+      finalYaml += `  type: ${p.type}\n`;
+      finalYaml += `  server: ${p.server}\n`;
+      finalYaml += `  port: ${p.port}\n`;
+
+      if (p.type === 'trojan') {
+        finalYaml += `  password: ${p.password}\n`;
+        finalYaml += `  skip-cert-verify: true\n`;
+        if (p.sni) finalYaml += `  sni: ${p.sni}\n`;
+      } else if (p.type === 'vless' || p.type === 'vmess') {
+        if (p.uuid) finalYaml += `  uuid: ${p.uuid}\n`;
+        if (p.alterId !== undefined && p.alterId !== null && p.type === 'vmess') finalYaml += `  alterId: ${p.alterId}\n`;
+        if (p.cipher) finalYaml += `  cipher: ${p.cipher}\n`;
+        if (p.encryption) finalYaml += `  encryption: ${p.encryption}\n`;
+        if (p.flow) finalYaml += `  flow: ${p.flow}\n`;
+        if (p.tls !== undefined) finalYaml += `  tls: ${p.tls}\n`;
+      }
+
+      finalYaml += `  network: ${p.network}\n`;
+
+      if (p.network === 'ws' && p['ws-opts']) {
+        finalYaml += `  ws-opts:\n`;
+        finalYaml += `    path: ${p['ws-opts'].path}\n`;
+        finalYaml += `    headers:\n`;
+        finalYaml += `      Host: ${p['ws-opts'].headers.Host}\n`;
+      }
+
+      // Perbaikan untuk grpc
+      if (p.network === 'grpc' && p['grpc-opts']) {
+        finalYaml += `  grpc-opts:\n`;
+        finalYaml += `    grpc-service-name: ${p['grpc-opts']['grpc-service-name']}\n`;
+        if (p['grpc-opts'].authority) {
+          finalYaml += `    authority: ${p['grpc-opts'].authority}\n`;
+        }
+      }
+
+      finalYaml += `  udp: true\n`;
+    });
+
+    document.getElementById('outputYaml').textContent = finalYaml;
+  }
+
+  function copyYaml() {
+    if (!finalYaml) {
+      alert("Tidak ada hasil untuk disalin.");
+      return;
+    }
+    navigator.clipboard.writeText(finalYaml).then(() => alert("Disalin ke clipboard!"));
+  }
+
+  function extractProxyNames(yaml) {
+    return (yaml.match(/name: (.+)/g) || []).map(x => x.replace('name: ', '').trim());
+  }
+
+  function downloadYaml() {
+    if (!finalYaml) {
+      alert("Tidak ada hasil untuk disimpan.");
+      return;
+    }
+
+    const names = extractProxyNames(finalYaml);
+    const filename = document.getElementById('filenameInput').value.trim() || 'config.yaml';
+
+    const fullConfig = `redir-port: 7891
+port: 8080
+socks-port: 1080
+mixed-port: 7890
+mode: rule
+log-level: error
+allow-lan: true
+unified-delay: true
+external-controller: 0.0.0.0:9090
+secret: serbadigitalku
+external-ui: ui
+tcp-concurrent: true
+dns:
+  enable: true
+  ipv6: false
+  respect-rules: true
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  default-nameserver:
+    - 223.5.5.5
+    - udp://223.5.5.5
+    - 1.1.1.1
+    - 8.8.8.8
+  nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+    - quic://dns.adguard.com:784
+    - https://dns.adguard.com/dns-query
+    - tls://dns.adguard.com
+    - 223.5.5.5
+    - udp://223.5.5.5
+  proxy-server-nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+    - quic://dns.adguard.com:784
+    - https://dns.adguard.com/dns-query
+    - tls://dns.adguard.com
+    - 223.5.5.5
+    - udp://223.5.5.5
+  fake-ip-filter:
+    - '*'
+    - '*.lan'
+  fallback-filter:
+    geoip: true
+    geoip-code: ID
+    ipcidr:
+      - 0.0.0.0/8
+      - 10.0.0.0/8
+      - 100.64.0.0/10
+      - 127.0.0.0/8
+      - 169.254.0.0/16
+      - 172.16.0.0/12
+      - 192.0.0.0/24
+      - 192.0.2.0/24
+      - 192.88.99.0/24
+      - 192.168.0.0/16
+      - 198.18.0.0/15
+      - 198.51.100.0/24
+      - 203.0.113.0/24
+      - 224.0.0.0/4
+      - 240.0.0.0/4
+      - 255.255.255.255/32
+    domain:
+      - +.google.com
+      - +.facebook.com
+      - +.fbcdn.net
+      - +.ggpht.com
+      - +.youtube.com
+      - +.githubusercontent.com
+      - +.googlevideo.com
+      - +.msftconnecttest.com
+      - +.msftncsi.com
+      - msftconnecttest.com
+      - msftncsi.com
+      - +.*
+  listen: 0.0.0.0:1053
+ipv6: false
+profile:
+  store-selected: true
+${finalYaml.trim()}
+proxy-groups:
+  - name: SERBADIGITALKU
+    type: select
+    proxies:
+      - ${names.join('\n      - ')}
+      - DIRECT
+rules:
+  - MATCH,SERBADIGITALKU`;
+
+    const blob = new Blob([fullConfig], { type: 'text/yaml' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  }
+
+  // Parsing vmess (Base64 JSON)
+  function parseVmess(uri) {
+    try {
+      const base64 = uri.slice(8);
+      const jsonStr = atob(base64);
+      const json = JSON.parse(jsonStr);
+
+      return {
+        name: json.ps || 'Vmess',
+        type: 'vmess',
+        server: json.add,
+        port: Number(json.port),
+        uuid: json.id,
+        alterId: Number(json.aid) || 0,
+        cipher: 'auto',
+        tls: json.tls === 'tls',
+        network: json.net || 'tcp',
+        'ws-opts': {
+          path: json.path || '/',
+          headers: { Host: json.host || json.add }
+        },
+        udp: true
+      };
+    } catch (e) {
+      console.error('Gagal parsing vmess:', e);
+      return null;
+    }
+  }
+
+  // Parsing trojan manual (perbaikan grpc-service-name)
+function parseTrojan(uri) {
+  try {
+    let rest = uri.slice(9);
+
+    let name = 'Trojan';
+    const hashIndex = rest.indexOf('#');
+    if (hashIndex !== -1) {
+      name = decodeURIComponent(rest.slice(hashIndex + 1));
+      rest = rest.slice(0, hashIndex);
+    }
+
+    let queryStr = '';
+    const queryIndex = rest.indexOf('?');
+    if (queryIndex !== -1) {
+      queryStr = rest.slice(queryIndex + 1);
+      rest = rest.slice(0, queryIndex);
+    }
+
+    const atIndex = rest.indexOf('@');
+    if (atIndex === -1) return null;
+
+    const password = rest.slice(0, atIndex);
+    const serverPort = rest.slice(atIndex + 1);
+
+    const colonIndex = serverPort.lastIndexOf(':');
+    let server = serverPort, port = 443;
+    if (colonIndex !== -1) {
+      server = serverPort.slice(0, colonIndex);
+      port = Number(serverPort.slice(colonIndex + 1));
+    }
+
+    const params = {};
+    if (queryStr) {
+      const usp = new URLSearchParams(queryStr);
+      usp.forEach((value, key) => {
+        params[key] = value;
+      });
+    }
+
+    const network = params.type || 'tcp';
+
+    let wsOpts = undefined;
+    let grpcOpts = undefined;
+    if (network === 'ws') {
+      wsOpts = {
+        path: params.path || '/',
+        headers: { Host: params.host || server }
+      };
+    } else if (network === 'grpc') {
+      grpcOpts = {
+        'grpc-service-name': params['grpc-service-name'] || params['serviceName'] || '',  // Cek key alternatif jika ada
+        authority: params.authority || ''
+      };
+    }
+
+    return {
+      name,
+      type: 'trojan',
+      server,
+      port,
+      password,
+      sni: params.sni || '',
+      network,
+      'ws-opts': wsOpts,
+      'grpc-opts': grpcOpts,
+      udp: true
+    };
+  } catch (e) {
+    console.error('Gagal parsing trojan:', e);
+    return null;
+  }
+}
+
+// Parsing vless manual (perbaikan grpc-service-name)
+function parseVless(uri) {
+  try {
+    let rest = uri.slice(8);
+
+    let name = 'Vless';
+    const hashIndex = rest.indexOf('#');
+    if (hashIndex !== -1) {
+      name = decodeURIComponent(rest.slice(hashIndex + 1));
+      rest = rest.slice(0, hashIndex);
+    }
+
+    let queryStr = '';
+    const queryIndex = rest.indexOf('?');
+    if (queryIndex !== -1) {
+      queryStr = rest.slice(queryIndex + 1);
+      rest = rest.slice(0, queryIndex);
+    }
+
+    const atIndex = rest.indexOf('@');
+    if (atIndex === -1) return null;
+
+    const uuid = rest.slice(0, atIndex);
+    const serverPort = rest.slice(atIndex + 1);
+
+    const colonIndex = serverPort.lastIndexOf(':');
+    let server = serverPort, port = 443;
+    if (colonIndex !== -1) {
+      server = serverPort.slice(0, colonIndex);
+      port = Number(serverPort.slice(colonIndex + 1));
+    }
+
+    const params = {};
+    if (queryStr) {
+      const usp = new URLSearchParams(queryStr);
+      usp.forEach((value, key) => {
+        params[key] = value;
+      });
+    }
+
+    const encryption = params.encryption || 'none';
+    const flow = params.flow || '';
+    const tls = params.security === 'tls';
+    const network = params.type || 'tcp';
+
+    let wsOpts = undefined;
+    let grpcOpts = undefined;
+    if (network === 'ws') {
+      wsOpts = {
+        path: params.path || '/',
+        headers: { Host: params.host || server }
+      };
+    } else if (network === 'grpc') {
+      grpcOpts = {
+        'grpc-service-name': params['grpc-service-name'] || params['serviceName'] || '',
+        authority: params.authority || ''
+      };
+    }
+
+    return {
+      name,
+      type: 'vless',
+      server,
+      port,
+      uuid,
+      encryption,
+      flow,
+      tls,
+      network,
+      'ws-opts': wsOpts,
+      'grpc-opts': grpcOpts,
+      udp: true
+    };
+  } catch (e) {
+    console.error('Gagal parsing vless:', e);
+    return null;
+  }
+}
+</script>
+</body>
+</html>
